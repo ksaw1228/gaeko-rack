@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createGecko, updateGecko, deleteGecko, createCareLog, deleteCareLog, uploadGeckoPhoto, deleteGeckoPhoto } from '../api';
+import WeightChart from './WeightChart';
 
 const CARE_TYPES = [
   { value: 'FEEDING', label: '급여', icon: '🍽️' },
@@ -46,6 +47,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [showMatingPopup, setShowMatingPopup] = useState(false);
   const [showLayingPopup, setShowLayingPopup] = useState(false);
   const [showOtherPopup, setShowOtherPopup] = useState(false);
+  const [showWeightChart, setShowWeightChart] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [matingInput, setMatingInput] = useState('');
   const [otherInput, setOtherInput] = useState('');
@@ -83,6 +85,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     setShowMatingPopup(false);
     setShowLayingPopup(false);
     setShowOtherPopup(false);
+    setShowWeightChart(false);
     setWeightInput('');
     setMatingInput('');
     setOtherInput('');
@@ -328,7 +331,15 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                     <p className="text-gray-700"><span className="font-semibold text-gray-900">모프:</span> {cell.gecko.morph || '-'}</p>
                     <p className="text-gray-700"><span className="font-semibold text-gray-900">성별:</span> {GENDERS.find(g => g.value === cell.gecko.gender)?.label || '-'}</p>
                     <p className="text-gray-700"><span className="font-semibold text-gray-900">생년월일:</span> {cell.gecko.birthDate ? cell.gecko.birthDate.split('T')[0] : '-'}</p>
-                    <p className="text-gray-700"><span className="font-semibold text-gray-900">체중:</span> {cell.gecko.weight ? `${cell.gecko.weight}g` : '-'}</p>
+                    <p className="text-gray-700 flex items-center gap-2">
+                      <span><span className="font-semibold text-gray-900">체중:</span> {cell.gecko.weight ? `${cell.gecko.weight}g` : '-'}</span>
+                      <button
+                        onClick={() => setShowWeightChart(true)}
+                        className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded hover:bg-emerald-200 transition-colors"
+                      >
+                        📊 그래프
+                      </button>
+                    </p>
                   </div>
                 </div>
                 {cell.gecko.notes && (
@@ -664,6 +675,14 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 체중 그래프 */}
+      {showWeightChart && (
+        <WeightChart
+          careLogs={careLogs}
+          onClose={() => setShowWeightChart(false)}
+        />
       )}
     </div>
   );
