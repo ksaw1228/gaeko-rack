@@ -4,18 +4,23 @@ import { createGecko, updateGecko, deleteGecko, createCareLog, deleteCareLog, up
 const CARE_TYPES = [
   { value: 'FEEDING', label: '급여', icon: '🍽️' },
   { value: 'CLEANING', label: '청소', icon: '🧹' },
-  { value: 'WATER', label: '물 교체', icon: '💧' },
   { value: 'SHEDDING', label: '탈피', icon: '🦎' },
   { value: 'WEIGHT', label: '체중', icon: '⚖️' },
   { value: 'MATING', label: '메이팅', icon: '💕' },
   { value: 'LAYING', label: '산란', icon: '🥚' },
-  { value: 'HEALTH', label: '건강', icon: '🏥' }
+  { value: 'OTHER', label: '기타', icon: '📝' }
 ];
 
 const GENDERS = [
   { value: 'MALE', label: '수컷' },
   { value: 'FEMALE', label: '암컷' },
   { value: 'UNKNOWN', label: '미확인' }
+];
+
+const LAYING_OPTIONS = [
+  { value: '유정란', label: '유정란' },
+  { value: '무정란', label: '무정란' },
+  { value: '모르겠음', label: '모르겠음' }
 ];
 
 export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
@@ -28,8 +33,6 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     weight: '',
     notes: ''
   });
-  const [careNote, setCareNote] = useState('');
-  const [careValue, setCareValue] = useState('');
   const [careLogs, setCareLogs] = useState([]);
   const [loadingType, setLoadingType] = useState(null);
   const [successType, setSuccessType] = useState(null);
@@ -37,6 +40,15 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [photoUrl, setPhotoUrl] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef(null);
+
+  // 팝업 상태
+  const [showWeightPopup, setShowWeightPopup] = useState(false);
+  const [showMatingPopup, setShowMatingPopup] = useState(false);
+  const [showLayingPopup, setShowLayingPopup] = useState(false);
+  const [showOtherPopup, setShowOtherPopup] = useState(false);
+  const [weightInput, setWeightInput] = useState('');
+  const [matingInput, setMatingInput] = useState('');
+  const [otherInput, setOtherInput] = useState('');
 
   useEffect(() => {
     if (cell?.gecko) {
@@ -66,6 +78,14 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     }
     setLoadingType(null);
     setSuccessType(null);
+    // 팝업 초기화
+    setShowWeightPopup(false);
+    setShowMatingPopup(false);
+    setShowLayingPopup(false);
+    setShowOtherPopup(false);
+    setWeightInput('');
+    setMatingInput('');
+    setOtherInput('');
   }, [cell]);
 
   if (!isOpen) return null;
@@ -105,33 +125,74 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     }
   };
 
-  const handleCareLog = async (type) => {
+  const handleCareLog = async (type, note = '', value = '') => {
     setLoadingType(type);
     setSuccessType(null);
     try {
       const newLog = await createCareLog(cell.gecko.id, {
         type,
-        note: careNote,
-        value: careValue
+        note,
+        value
       });
 
-      // 로컬 상태에 새 기록 추가 (맨 앞에)
       setCareLogs(prev => [newLog, ...prev]);
-
-      setCareNote('');
-      setCareValue('');
       setSuccessType(type);
-
-      // 2초 후 성공 표시 제거
       setTimeout(() => setSuccessType(null), 2000);
-
-      // 백그라운드에서 전체 데이터 갱신
       onSave();
     } catch (error) {
       alert('기록 실패: ' + error.message);
     } finally {
       setLoadingType(null);
     }
+  };
+
+  const handleCareButtonClick = (type) => {
+    // 급여, 청소, 탈피는 바로 기록
+    if (['FEEDING', 'CLEANING', 'SHEDDING'].includes(type)) {
+      handleCareLog(type);
+    } else if (type === 'WEIGHT') {
+      setWeightInput(cell.gecko.weight?.toString() || '');
+      setShowWeightPopup(true);
+    } else if (type === 'MATING') {
+      setMatingInput('');
+      setShowMatingPopup(true);
+    } else if (type === 'LAYING') {
+      setShowLayingPopup(true);
+    } else if (type === 'OTHER') {
+      setOtherInput('');
+      setShowOtherPopup(true);
+    }
+  };
+
+  const handleWeightSubmit = () => {
+    if (!weightInput) {
+      alert('체중을 입력해주세요');
+      return;
+    }
+    handleCareLog('WEIGHT', '', weightInput + 'g');
+    setShowWeightPopup(false);
+    setWeightInput('');
+  };
+
+  const handleMatingSubmit = () => {
+    handleCareLog('MATING', matingInput ? `수컷: ${matingInput}` : '', '');
+    setShowMatingPopup(false);
+    setMatingInput('');
+  };
+
+  const handleLayingSubmit = (eggType) => {
+    handleCareLog('LAYING', eggType, '');
+    setShowLayingPopup(false);
+  };
+
+  const handleOtherSubmit = () => {
+    if (!otherInput.trim()) {
+      alert('내용을 입력해주세요');
+      return;
+    }
+    handleCareLog('OTHER', otherInput, '');
+    setShowOtherPopup(false);
+    setOtherInput('');
   };
 
   const handleDeleteLog = async (logId) => {
@@ -190,6 +251,19 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     if (!dateStr) return null;
     const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
     return days;
+  };
+
+  const formatLogDisplay = (log) => {
+    const typeInfo = CARE_TYPES.find(t => t.value === log.type);
+    let display = typeInfo?.label || log.type;
+
+    if (log.value) {
+      display += ` (${log.value})`;
+    }
+    if (log.note) {
+      display += ` - ${log.note}`;
+    }
+    return { icon: typeInfo?.icon, display };
   };
 
   return (
@@ -283,22 +357,6 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                 <h3 className="font-bold mb-3 text-sm sm:text-base text-gray-800">
                   관리 기록 추가
                 </h3>
-                <div className="mb-3 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="메모 (선택)"
-                    value={careNote}
-                    onChange={e => setCareNote(e.target.value)}
-                    className="flex-1 px-3 sm:px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all"
-                  />
-                  <input
-                    type="text"
-                    placeholder="값"
-                    value={careValue}
-                    onChange={e => setCareValue(e.target.value)}
-                    className="w-16 sm:w-20 px-2 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all"
-                  />
-                </div>
                 <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                   {CARE_TYPES.map(type => {
                     const isLoading = loadingType === type.value;
@@ -307,7 +365,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                     return (
                       <button
                         key={type.value}
-                        onClick={() => handleCareLog(type.value)}
+                        onClick={() => handleCareButtonClick(type.value)}
                         disabled={isLoading}
                         className={`
                           p-2 rounded-lg text-center transition-all duration-200 border
@@ -338,7 +396,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                 {careLogs.length > 0 ? (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {careLogs.map((log, index) => {
-                      const typeInfo = CARE_TYPES.find(t => t.value === log.type);
+                      const { icon, display } = formatLogDisplay(log);
                       const daysSince = getDaysSince(log.createdAt);
                       const isNew = index === 0 && successType;
                       const isDeleting = deletingLogId === log.id;
@@ -352,19 +410,18 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                             ${isDeleting ? 'opacity-50' : ''}
                           `}
                         >
-                          <span>{typeInfo?.icon}</span>
-                          <span className="font-medium text-gray-800">{typeInfo?.label}</span>
-                          <span className="text-gray-500 text-xs">{formatDate(log.createdAt)}</span>
+                          <span>{icon}</span>
+                          <span className="font-medium text-gray-800 flex-1 truncate">{display}</span>
+                          <span className="text-gray-500 text-xs whitespace-nowrap">{formatDate(log.createdAt)}</span>
                           {daysSince !== null && (
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${daysSince >= 3 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${daysSince >= 3 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
                               {daysSince === 0 ? '오늘' : `${daysSince}일 전`}
                             </span>
                           )}
-                          {log.note && <span className="text-gray-600 flex-1 truncate">- {log.note}</span>}
                           <button
                             onClick={() => handleDeleteLog(log.id)}
                             disabled={isDeleting}
-                            className="ml-auto text-gray-400 hover:text-red-500 transition-colors px-1"
+                            className="text-gray-400 hover:text-red-500 transition-colors px-1"
                             title="삭제"
                           >
                             {isDeleting ? '⏳' : '✕'}
@@ -478,6 +535,136 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
           )}
         </div>
       </div>
+
+      {/* 체중 입력 팝업 */}
+      {showWeightPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowWeightPopup(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-72 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">⚖️ 체중 기록</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="500"
+                value={weightInput}
+                onChange={e => setWeightInput(e.target.value)}
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-center text-xl font-bold focus:outline-none focus:border-emerald-500"
+                placeholder="0"
+                autoFocus
+              />
+              <span className="text-xl font-bold text-gray-600">g</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowWeightPopup(false)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleWeightSubmit}
+                className="flex-1 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium"
+              >
+                기록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 메이팅 입력 팝업 */}
+      {showMatingPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowMatingPopup(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">💕 메이팅 기록</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-600 mb-2">메이팅한 수컷 (선택)</label>
+              <input
+                type="text"
+                value={matingInput}
+                onChange={e => setMatingInput(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                placeholder="수컷 이름 입력"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowMatingPopup(false)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleMatingSubmit}
+                className="flex-1 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium"
+              >
+                기록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 산란 선택 팝업 */}
+      {showLayingPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowLayingPopup(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">🥚 산란 기록</h3>
+            <div className="space-y-2 mb-4">
+              {LAYING_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => handleLayingSubmit(option.value)}
+                  className="w-full py-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-emerald-50 hover:border-emerald-300 font-medium text-gray-700 transition-all"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowLayingPopup(false)}
+              className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 기타 입력 팝업 */}
+      {showOtherPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowOtherPopup(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">📝 기타 기록</h3>
+            <div className="mb-4">
+              <textarea
+                value={otherInput}
+                onChange={e => setOtherInput(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-500 resize-none"
+                placeholder="내용을 입력하세요"
+                rows={3}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowOtherPopup(false)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleOtherSubmit}
+                className="flex-1 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium"
+              >
+                기록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
