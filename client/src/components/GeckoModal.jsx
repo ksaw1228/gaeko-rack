@@ -48,6 +48,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [showLayingPopup, setShowLayingPopup] = useState(false);
   const [showOtherPopup, setShowOtherPopup] = useState(false);
   const [showWeightChart, setShowWeightChart] = useState(false);
+  const [showAllLogs, setShowAllLogs] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [matingInput, setMatingInput] = useState('');
   const [otherInput, setOtherInput] = useState('');
@@ -91,6 +92,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     setShowLayingPopup(false);
     setShowOtherPopup(false);
     setShowWeightChart(false);
+    setShowAllLogs(false);
     setWeightInput('');
     setMatingInput('');
     setOtherInput('');
@@ -483,42 +485,52 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                   최근 기록 <span className="text-gray-500 font-normal">({careLogs.length}건)</span>
                 </h3>
                 {careLogs.length > 0 ? (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {careLogs.map((log, index) => {
-                      const { icon, display } = formatLogDisplay(log);
-                      const daysSince = getDaysSince(log.createdAt);
-                      const isNew = index === 0 && successType;
-                      const isDeleting = deletingLogId === log.id;
+                  <>
+                    <div className="space-y-2">
+                      {careLogs.slice(0, 5).map((log, index) => {
+                        const { icon, display } = formatLogDisplay(log);
+                        const daysSince = getDaysSince(log.createdAt);
+                        const isNew = index === 0 && successType;
+                        const isDeleting = deletingLogId === log.id;
 
-                      return (
-                        <div
-                          key={log.id}
-                          className={`
-                            flex items-center gap-2 text-sm p-2.5 rounded-lg transition-all
-                            ${isNew ? 'bg-emerald-50 border border-emerald-300' : 'bg-gray-50 border border-gray-200'}
-                            ${isDeleting ? 'opacity-50' : ''}
-                          `}
-                        >
-                          <span>{icon}</span>
-                          <span className="font-medium text-gray-800 flex-1 truncate">{display}</span>
-                          <span className="text-gray-500 text-xs whitespace-nowrap">{formatDate(log.createdAt)}</span>
-                          {daysSince !== null && (
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${daysSince >= 3 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                              {daysSince === 0 ? '오늘' : `${daysSince}일 전`}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => handleDeleteLog(log.id)}
-                            disabled={isDeleting}
-                            className="text-gray-400 hover:text-red-500 transition-colors px-1"
-                            title="삭제"
+                        return (
+                          <div
+                            key={log.id}
+                            className={`
+                              flex items-center gap-2 text-sm p-2.5 rounded-lg transition-all
+                              ${isNew ? 'bg-emerald-50 border border-emerald-300' : 'bg-gray-50 border border-gray-200'}
+                              ${isDeleting ? 'opacity-50' : ''}
+                            `}
                           >
-                            {isDeleting ? '⏳' : '✕'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                            <span>{icon}</span>
+                            <span className="font-medium text-gray-800 flex-1 truncate">{display}</span>
+                            <span className="text-gray-500 text-xs whitespace-nowrap">{formatDate(log.createdAt)}</span>
+                            {daysSince !== null && (
+                              <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${daysSince >= 3 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                {daysSince === 0 ? '오늘' : `${daysSince}일 전`}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleDeleteLog(log.id)}
+                              disabled={isDeleting}
+                              className="text-gray-400 hover:text-red-500 transition-colors px-1"
+                              title="삭제"
+                            >
+                              {isDeleting ? '⏳' : '✕'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {careLogs.length > 5 && (
+                      <button
+                        onClick={() => setShowAllLogs(true)}
+                        className="w-full mt-3 py-2 text-sm text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors font-medium"
+                      >
+                        전체 기록 보기 ({careLogs.length}건) →
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <p className="text-gray-400 text-sm text-center py-4">아직 기록이 없습니다</p>
                 )}
@@ -781,6 +793,59 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
           careLogs={careLogs}
           onClose={() => setShowWeightChart(false)}
         />
+      )}
+
+      {/* 전체 기록 보기 팝업 */}
+      {showAllLogs && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowAllLogs(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[95%] max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">
+                📋 전체 기록 <span className="text-gray-500 font-normal">({careLogs.length}건)</span>
+              </h3>
+              <button
+                onClick={() => setShowAllLogs(false)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors text-xl"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {careLogs.map((log) => {
+                const { icon, display } = formatLogDisplay(log);
+                const daysSince = getDaysSince(log.createdAt);
+                const isDeleting = deletingLogId === log.id;
+
+                return (
+                  <div
+                    key={log.id}
+                    className={`
+                      flex items-center gap-2 text-sm p-2.5 rounded-lg transition-all bg-gray-50 border border-gray-200
+                      ${isDeleting ? 'opacity-50' : ''}
+                    `}
+                  >
+                    <span>{icon}</span>
+                    <span className="font-medium text-gray-800 flex-1 truncate">{display}</span>
+                    <span className="text-gray-500 text-xs whitespace-nowrap">{formatDate(log.createdAt)}</span>
+                    {daysSince !== null && (
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${daysSince >= 3 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                        {daysSince === 0 ? '오늘' : `${daysSince}일 전`}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleDeleteLog(log.id)}
+                      disabled={isDeleting}
+                      className="text-gray-400 hover:text-red-500 transition-colors px-1"
+                      title="삭제"
+                    >
+                      {isDeleting ? '⏳' : '✕'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
