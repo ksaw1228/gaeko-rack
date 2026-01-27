@@ -20,7 +20,7 @@ export const moveGecko = (id, data) => api.patch(`/geckos/${id}/move`, data).the
 export const swapGeckos = (geckoId1, geckoId2) => api.post('/geckos/swap', { geckoId1, geckoId2 }).then(res => res.data);
 export const deleteGecko = (id) => api.delete(`/geckos/${id}`);
 
-// Photo API
+// Photo API (legacy - single photo)
 export const uploadGeckoPhoto = (geckoId, file) => {
   const formData = new FormData();
   formData.append('photo', file);
@@ -29,6 +29,19 @@ export const uploadGeckoPhoto = (geckoId, file) => {
   }).then(res => res.data);
 };
 export const deleteGeckoPhoto = (geckoId) => api.delete(`/geckos/${geckoId}/photo`);
+
+// Photo Gallery API (multiple photos)
+export const getGeckoPhotos = (geckoId) => api.get(`/geckos/${geckoId}/photos`).then(res => res.data);
+export const uploadGeckoPhotoWithDate = (geckoId, file, takenAt) => {
+  const formData = new FormData();
+  formData.append('photo', file);
+  if (takenAt) formData.append('takenAt', takenAt);
+  return api.post(`/geckos/${geckoId}/photos`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(res => res.data);
+};
+export const setMainPhoto = (photoId) => api.patch(`/photos/${photoId}/main`).then(res => res.data);
+export const deletePhoto = (photoId) => api.delete(`/photos/${photoId}`);
 
 // Care Log API
 export const getGeckoLogs = (geckoId) => api.get(`/geckos/${geckoId}/logs`).then(res => res.data);

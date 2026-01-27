@@ -33,11 +33,24 @@ model Gecko {
   column    Int
 
   careLogs  CareLog[]
+  photos    GeckoPhoto[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@unique([rackId, row, column])
+}
+
+model GeckoPhoto {
+  id        Int      @id @default(autoincrement())
+  photoUrl  String
+  takenAt   DateTime @default(now())
+  isMain    Boolean  @default(false)
+
+  geckoId   Int
+  gecko     Gecko    @relation(fields: [geckoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 }
 
 model CareLog {

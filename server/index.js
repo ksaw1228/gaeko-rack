@@ -327,7 +327,7 @@ app.post('/api/geckos/:id/photo', upload.single('photo'), async (req, res) => {
   }
 });
 
-// Delete gecko photo
+// Delete gecko photo (legacy - single photo)
 app.delete('/api/geckos/:id/photo', async (req, res) => {
   try {
     const gecko = await prisma.gecko.findUnique({
@@ -345,6 +345,147 @@ app.delete('/api/geckos/:id/photo', async (req, res) => {
       where: { id: parseInt(req.params.id) },
       data: { photoUrl: null }
     });
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ GECKO PHOTOS (Multiple) ============
+
+// Get all photos for a gecko
+app.get('/api/geckos/:geckoId/photos', async (req, res) => {
+  try {
+    const photos = await prisma.geckoPhoto.findMany({
+      where: { geckoId: parseInt(req.params.geckoId) },
+      orderBy: { takenAt: 'desc' }
+    });
+    res.json(photos);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upload photo for gecko
+app.post('/api/geckos/:geckoId/photos', upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '파일이 없습니다.' });
+    }
+
+    const geckoId = parseInt(req.params.geckoId);
+    const photoUrl = `/uploads/${req.file.filename}`;
+    const takenAt = req.body.takenAt ? new Date(req.body.takenAt) : new Date();
+
+    // 첫 번째 사진이면 자동으로 대표 이미지로 설정
+    const existingPhotos = await prisma.geckoPhoto.count({
+      where: { geckoId }
+    });
+
+    const photo = await prisma.geckoPhoto.create({
+      data: {
+        photoUrl,
+        takenAt,
+        isMain: existingPhotos === 0,
+        geckoId
+      }
+    });
+
+    // 첫 번째 사진이면 gecko의 photoUrl도 업데이트
+    if (existingPhotos === 0) {
+      await prisma.gecko.update({
+        where: { id: geckoId },
+        data: { photoUrl }
+      });
+    }
+
+    res.status(201).json(photo);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Set photo as main
+app.patch('/api/photos/:id/main', async (req, res) => {
+  try {
+    const photo = await prisma.geckoPhoto.findUnique({
+      where: { id: parseInt(req.params.id) }
+    });
+
+    if (!photo) {
+      return res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+    }
+
+    // 기존 대표 이미지 해제
+    await prisma.geckoPhoto.updateMany({
+      where: { geckoId: photo.geckoId },
+      data: { isMain: false }
+    });
+
+    // 새로운 대표 이미지 설정
+    const updatedPhoto = await prisma.geckoPhoto.update({
+      where: { id: parseInt(req.params.id) },
+      data: { isMain: true }
+    });
+
+    // gecko의 photoUrl도 업데이트
+    await prisma.gecko.update({
+      where: { id: photo.geckoId },
+      data: { photoUrl: photo.photoUrl }
+    });
+
+    res.json(updatedPhoto);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete photo
+app.delete('/api/photos/:id', async (req, res) => {
+  try {
+    const photo = await prisma.geckoPhoto.findUnique({
+      where: { id: parseInt(req.params.id) }
+    });
+
+    if (!photo) {
+      return res.status(404).json({ error: '사진을 찾을 수 없습니다.' });
+    }
+
+    // 파일 삭제
+    const photoPath = path.join(__dirname, photo.photoUrl);
+    if (fs.existsSync(photoPath)) {
+      fs.unlinkSync(photoPath);
+    }
+
+    // DB에서 삭제
+    await prisma.geckoPhoto.delete({
+      where: { id: parseInt(req.params.id) }
+    });
+
+    // 대표 이미지였다면 다른 사진을 대표로 설정
+    if (photo.isMain) {
+      const nextPhoto = await prisma.geckoPhoto.findFirst({
+        where: { geckoId: photo.geckoId },
+        orderBy: { takenAt: 'desc' }
+      });
+
+      if (nextPhoto) {
+        await prisma.geckoPhoto.update({
+          where: { id: nextPhoto.id },
+          data: { isMain: true }
+        });
+        await prisma.gecko.update({
+          where: { id: photo.geckoId },
+          data: { photoUrl: nextPhoto.photoUrl }
+        });
+      } else {
+        await prisma.gecko.update({
+          where: { id: photo.geckoId },
+          data: { photoUrl: null }
+        });
+      }
+    }
 
     res.status(204).send();
   } catch (error) {

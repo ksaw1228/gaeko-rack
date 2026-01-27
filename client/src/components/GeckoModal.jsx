@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { createGecko, updateGecko, deleteGecko, createCareLog, deleteCareLog, uploadGeckoPhoto, deleteGeckoPhoto } from '../api';
+import { createGecko, updateGecko, deleteGecko, createCareLog, deleteCareLog, getGeckoPhotos, uploadGeckoPhotoWithDate, setMainPhoto, deletePhoto } from '../api';
 import WeightChart from './WeightChart';
 
 const CARE_TYPES = [
@@ -39,7 +39,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [successType, setSuccessType] = useState(null);
   const [deletingLogId, setDeletingLogId] = useState(null);
   const [photoUrl, setPhotoUrl] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
+  const [photoDate, setPhotoDate] = useState('');
   const fileInputRef = useRef(null);
 
   // 팝업 상태
@@ -58,6 +62,16 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
 
+  // 사진 목록 불러오기
+  const loadPhotos = async (geckoId) => {
+    try {
+      const photoList = await getGeckoPhotos(geckoId);
+      setPhotos(photoList);
+    } catch (error) {
+      console.error('Failed to load photos:', error);
+    }
+  };
+
   useEffect(() => {
     if (cell?.gecko) {
       setForm({
@@ -71,6 +85,8 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
       setCareLogs(cell.gecko.careLogs || []);
       setPhotoUrl(cell.gecko.photoUrl || null);
       setIsEditing(false);
+      // 사진 목록 불러오기
+      loadPhotos(cell.gecko.id);
     } else {
       setForm({
         name: '',
@@ -82,6 +98,7 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
       });
       setCareLogs([]);
       setPhotoUrl(null);
+      setPhotos([]);
       setIsEditing(true);
     }
     setLoadingType(null);
@@ -93,9 +110,12 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     setShowOtherPopup(false);
     setShowWeightChart(false);
     setShowAllLogs(false);
+    setShowPhotoGallery(false);
+    setShowPhotoUpload(false);
     setWeightInput('');
     setMatingInput('');
     setOtherInput('');
+    setPhotoDate('');
     // 날짜/시간 초기화
     setUsePastDate(false);
     setCustomDate('');
@@ -262,9 +282,19 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
 
     setUploadingPhoto(true);
     try {
-      const result = await uploadGeckoPhoto(cell.gecko.id, file);
-      setPhotoUrl(result.photoUrl);
+      const takenAt = photoDate || new Date().toISOString().split('T')[0];
+      const result = await uploadGeckoPhotoWithDate(cell.gecko.id, file, takenAt);
+
+      // 첫 번째 사진이면 대표 이미지로 설정
+      if (result.isMain) {
+        setPhotoUrl(result.photoUrl);
+      }
+
+      // 사진 목록 새로고침
+      await loadPhotos(cell.gecko.id);
       onSave();
+      setShowPhotoUpload(false);
+      setPhotoDate('');
     } catch (error) {
       alert('사진 업로드 실패: ' + error.message);
     } finally {
@@ -272,21 +302,47 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  const handlePhotoDelete = async () => {
+  const handleSetMainPhoto = async (photoId) => {
+    try {
+      await setMainPhoto(photoId);
+      await loadPhotos(cell.gecko.id);
+      // 대표 이미지 URL 업데이트
+      const mainPhoto = photos.find(p => p.id === photoId);
+      if (mainPhoto) {
+        setPhotoUrl(mainPhoto.photoUrl);
+      }
+      onSave();
+    } catch (error) {
+      alert('대표 이미지 설정 실패: ' + error.message);
+    }
+  };
+
+  const handlePhotoDelete = async (photoId) => {
     if (!confirm('사진을 삭제하시겠습니까?')) return;
 
-    setUploadingPhoto(true);
     try {
-      await deleteGeckoPhoto(cell.gecko.id);
-      setPhotoUrl(null);
+      await deletePhoto(photoId);
+      await loadPhotos(cell.gecko.id);
+
+      // 대표 이미지가 삭제됐으면 새로운 대표 이미지 설정
+      const deletedPhoto = photos.find(p => p.id === photoId);
+      if (deletedPhoto?.isMain) {
+        const remainingPhotos = photos.filter(p => p.id !== photoId);
+        if (remainingPhotos.length > 0) {
+          setPhotoUrl(remainingPhotos[0].photoUrl);
+        } else {
+          setPhotoUrl(null);
+        }
+      }
       onSave();
     } catch (error) {
       alert('사진 삭제 실패: ' + error.message);
-    } finally {
-      setUploadingPhoto(false);
     }
   };
 
@@ -333,23 +389,24 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                 <div className="flex items-start gap-4">
                   <div className="relative">
                     {photoUrl ? (
-                      <div className="relative group">
+                      <div
+                        className="relative group cursor-pointer"
+                        onClick={() => setShowPhotoGallery(true)}
+                      >
                         <img
                           src={photoUrl}
                           alt={cell.gecko.name}
                           className="w-24 h-24 object-cover rounded-xl border border-gray-300"
                         />
-                        <button
-                          onClick={handlePhotoDelete}
-                          disabled={uploadingPhoto}
-                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-all"
-                        >
-                          ✕
-                        </button>
+                        {photos.length > 1 && (
+                          <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                            +{photos.length - 1}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => setShowPhotoUpload(true)}
                         className={`w-24 h-24 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all ${uploadingPhoto ? 'opacity-50' : ''}`}
                       >
                         {uploadingPhoto ? (
@@ -362,13 +419,6 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                         )}
                       </div>
                     )}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
                   </div>
 
                   {/* 개체 정보 표시 */}
@@ -390,15 +440,23 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                 {cell.gecko.notes && (
                   <p className="mt-3 text-sm text-gray-700 bg-white rounded-lg p-2 border border-gray-200"><span className="font-semibold">메모:</span> {cell.gecko.notes}</p>
                 )}
-                {photoUrl && (
+                <div className="mt-3 flex gap-2">
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => setShowPhotoUpload(true)}
                     disabled={uploadingPhoto}
-                    className="mt-3 text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                    className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 transition-colors font-medium"
                   >
-                    {uploadingPhoto ? '업로드 중...' : '📷 사진 변경'}
+                    {uploadingPhoto ? '⏳ 업로드 중...' : '📷 사진 추가'}
                   </button>
-                )}
+                  {photos.length > 0 && (
+                    <button
+                      onClick={() => setShowPhotoGallery(true)}
+                      className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
+                      🖼️ 갤러리 ({photos.length})
+                    </button>
+                  )}
+                </div>
               </div>
 
               <button
@@ -843,6 +901,117 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사진 업로드 팝업 */}
+      {showPhotoUpload && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowPhotoUpload(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">📷 사진 추가</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-600 mb-2">촬영 날짜</label>
+              <input
+                type="date"
+                value={photoDate || new Date().toISOString().split('T')[0]}
+                onChange={e => setPhotoDate(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className={`mb-4 border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-all ${uploadingPhoto ? 'opacity-50 pointer-events-none' : ''}`}
+            >
+              {uploadingPhoto ? (
+                <span className="text-3xl">⏳</span>
+              ) : (
+                <>
+                  <span className="text-3xl text-gray-400 mb-2">📷</span>
+                  <span className="text-sm text-gray-500">클릭하여 사진 선택</span>
+                </>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => setShowPhotoUpload(false)}
+              className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 사진 갤러리 팝업 */}
+      {showPhotoGallery && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowPhotoGallery(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[95%] max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">
+                🖼️ 사진 갤러리 <span className="text-gray-500 font-normal">({photos.length}장)</span>
+              </h3>
+              <button
+                onClick={() => setShowPhotoGallery(false)}
+                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors text-xl"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid grid-cols-2 gap-3">
+                {photos.map((photo) => (
+                  <div key={photo.id} className="relative group">
+                    <img
+                      src={photo.photoUrl}
+                      alt="Gecko photo"
+                      className={`w-full aspect-square object-cover rounded-xl border-2 ${photo.isMain ? 'border-emerald-500' : 'border-gray-200'}`}
+                    />
+                    {photo.isMain && (
+                      <div className="absolute top-2 left-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full font-medium">
+                        대표
+                      </div>
+                    )}
+                    <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                      {new Date(photo.takenAt).toLocaleDateString('ko-KR')}
+                    </div>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {!photo.isMain && (
+                        <button
+                          onClick={() => handleSetMainPhoto(photo.id)}
+                          className="w-7 h-7 bg-emerald-500 text-white rounded-full text-xs hover:bg-emerald-600 flex items-center justify-center"
+                          title="대표 이미지로 설정"
+                        >
+                          ⭐
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handlePhotoDelete(photo.id)}
+                        className="w-7 h-7 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 flex items-center justify-center"
+                        title="삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  setShowPhotoGallery(false);
+                  setShowPhotoUpload(true);
+                }}
+                className="w-full mt-4 py-3 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-medium transition-colors"
+              >
+                📷 새 사진 추가
+              </button>
             </div>
           </div>
         </div>
