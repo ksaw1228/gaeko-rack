@@ -52,6 +52,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
   const [matingInput, setMatingInput] = useState('');
   const [otherInput, setOtherInput] = useState('');
 
+  // 날짜/시간 설정 상태
+  const [usePastDate, setUsePastDate] = useState(false);
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('');
+
   useEffect(() => {
     if (cell?.gecko) {
       setForm({
@@ -89,6 +94,10 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     setWeightInput('');
     setMatingInput('');
     setOtherInput('');
+    // 날짜/시간 초기화
+    setUsePastDate(false);
+    setCustomDate('');
+    setCustomTime('');
   }, [cell]);
 
   if (!isOpen) return null;
@@ -128,20 +137,54 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
     }
   };
 
+  // 현재 날짜/시간 문자열 가져오기
+  const getCurrentDateTimeStrings = () => {
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5);
+    return { date, time };
+  };
+
+  // 날짜/시간 초기값 설정
+  const initializeDateTimeInputs = () => {
+    const { date, time } = getCurrentDateTimeStrings();
+    setCustomDate(date);
+    setCustomTime(time);
+  };
+
   const handleCareLog = async (type, note = '', value = '') => {
     setLoadingType(type);
     setSuccessType(null);
     try {
-      const newLog = await createCareLog(cell.gecko.id, {
+      const logData = {
         type,
         note,
         value
+      };
+
+      // 과거 날짜 사용 시 createdAt 추가
+      if (usePastDate && customDate && customTime) {
+        logData.createdAt = new Date(`${customDate}T${customTime}:00`).toISOString();
+      }
+
+      const newLog = await createCareLog(cell.gecko.id, logData);
+
+      // 날짜순 정렬하여 로그 목록 업데이트
+      setCareLogs(prev => {
+        const updated = [newLog, ...prev];
+        return updated.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       });
 
-      setCareLogs(prev => [newLog, ...prev]);
       setSuccessType(type);
       setTimeout(() => setSuccessType(null), 2000);
       onSave();
+
+      // 과거 날짜 모드 초기화
+      if (usePastDate) {
+        setUsePastDate(false);
+        setCustomDate('');
+        setCustomTime('');
+      }
     } catch (error) {
       alert('기록 실패: ' + error.message);
     } finally {
@@ -368,6 +411,41 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
                 <h3 className="font-bold mb-3 text-sm sm:text-base text-gray-800">
                   관리 기록 추가
                 </h3>
+
+                {/* 과거 날짜 설정 */}
+                <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={usePastDate}
+                      onChange={(e) => {
+                        setUsePastDate(e.target.checked);
+                        if (e.target.checked) {
+                          initializeDateTimeInputs();
+                        }
+                      }}
+                      className="w-4 h-4 text-emerald-500 rounded focus:ring-emerald-500"
+                    />
+                    <span className="text-sm text-gray-700">과거 날짜로 기록</span>
+                  </label>
+                  {usePastDate && (
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="date"
+                        value={customDate}
+                        onChange={(e) => setCustomDate(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        type="time"
+                        value={customTime}
+                        onChange={(e) => setCustomTime(e.target.value)}
+                        className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                   {CARE_TYPES.map(type => {
                     const isLoading = loadingType === type.value;
@@ -552,6 +630,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowWeightPopup(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-72 p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">⚖️ 체중 기록</h3>
+            {usePastDate && customDate && (
+              <p className="text-xs text-center text-emerald-600 bg-emerald-50 rounded-lg py-1.5 mb-3">
+                📅 {customDate} {customTime}
+              </p>
+            )}
             <div className="flex items-center gap-2 mb-4">
               <input
                 type="number"
@@ -589,6 +672,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowMatingPopup(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">💕 메이팅 기록</h3>
+            {usePastDate && customDate && (
+              <p className="text-xs text-center text-emerald-600 bg-emerald-50 rounded-lg py-1.5 mb-3">
+                📅 {customDate} {customTime}
+              </p>
+            )}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-600 mb-2">메이팅한 수컷 (선택)</label>
               <input
@@ -623,6 +711,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowLayingPopup(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">🥚 산란 기록</h3>
+            {usePastDate && customDate && (
+              <p className="text-xs text-center text-emerald-600 bg-emerald-50 rounded-lg py-1.5 mb-3">
+                📅 {customDate} {customTime}
+              </p>
+            )}
             <div className="space-y-2 mb-4">
               {LAYING_OPTIONS.map(option => (
                 <button
@@ -649,6 +742,11 @@ export default function GeckoModal({ isOpen, onClose, cell, rackId, onSave }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowOtherPopup(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">📝 기타 기록</h3>
+            {usePastDate && customDate && (
+              <p className="text-xs text-center text-emerald-600 bg-emerald-50 rounded-lg py-1.5 mb-3">
+                📅 {customDate} {customTime}
+              </p>
+            )}
             <div className="mb-4">
               <textarea
                 value={otherInput}

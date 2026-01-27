@@ -370,13 +370,14 @@ app.get('/api/geckos/:geckoId/logs', async (req, res) => {
 // Create care log
 app.post('/api/geckos/:geckoId/logs', async (req, res) => {
   try {
-    const { type, note, value } = req.body;
+    const { type, note, value, createdAt } = req.body;
     const log = await prisma.careLog.create({
       data: {
         type,
         note,
         value,
-        geckoId: parseInt(req.params.geckoId)
+        geckoId: parseInt(req.params.geckoId),
+        createdAt: createdAt ? new Date(createdAt) : undefined
       }
     });
     res.status(201).json(log);
