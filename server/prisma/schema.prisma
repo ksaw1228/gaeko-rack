@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  racks     Rack[]
+}
+
 model Rack {
   id        Int      @id @default(autoincrement())
   name      String
@@ -15,6 +25,9 @@ model Rack {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   geckos    Gecko[]
+
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Gecko {

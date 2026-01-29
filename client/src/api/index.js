@@ -4,6 +4,36 @@ const api = axios.create({
   baseURL: '/api'
 });
 
+// JWT 토큰 인터셉터
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 401 응답 시 토큰 제거 (리다이렉트는 AuthContext에서 처리)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
+export const login = (email, password) =>
+  api.post('/auth/login', { email, password }).then(res => res.data);
+
+export const register = (email, password, name) =>
+  api.post('/auth/register', { email, password, name }).then(res => res.data);
+
+export const getCurrentUser = () =>
+  api.get('/auth/me').then(res => res.data);
+
 // Rack API
 export const getRacks = () => api.get('/racks').then(res => res.data);
 export const getRack = (id) => api.get(`/racks/${id}`).then(res => res.data);

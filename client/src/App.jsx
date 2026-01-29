@@ -6,9 +6,12 @@ import GeckoModal from './components/GeckoModal';
 import AddRackModal from './components/AddRackModal';
 import EditRackModal from './components/EditRackModal';
 import GeckoLogo from './components/GeckoLogo';
+import LoginPage from './components/LoginPage';
+import { useAuth } from './context/AuthContext';
 import './App.css';
 
 function App() {
+  const { user, loading: authLoading, logout } = useAuth();
   const [racks, setRacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCell, setSelectedCell] = useState(null);
@@ -84,7 +87,7 @@ function App() {
   const totalGeckos = racks.reduce((sum, rack) => sum + (rack.geckos?.length || 0), 0);
   const totalCells = racks.reduce((sum, rack) => sum + rack.rows * rack.columns, 0);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -93,6 +96,10 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  if (!user) {
+    return <LoginPage />;
   }
 
   return (
@@ -111,12 +118,23 @@ function App() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowAddRack(true)}
-            className="ml-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium text-sm shadow-md transition-all hover:scale-105 active:scale-95"
-          >
-            + <span className="hidden sm:inline">새 랙</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddRack(true)}
+              className="px-4 sm:px-5 py-2 sm:py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium text-sm shadow-md transition-all hover:scale-105 active:scale-95"
+            >
+              + <span className="hidden sm:inline">새 랙</span>
+            </button>
+            <button
+              onClick={logout}
+              className="px-3 py-2 sm:py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="로그아웃"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
